@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - Mock Bank{% endblock %}
+{% block content %}
+
+  <div class="card">
+    <div class="muted">Total balance across accounts</div>
+    <div class="balance">${{ "%.2f"|format(net_worth) }}</div>
+  </div>
+
+  {% if credit.payment_due > 0 %}
+  <div class="due">
+    <div>
+      <div class="muted">Credit card payment due</div>
+      <div>{{ credit.name }} · due {{ credit.due_date }}</div>
+    </div>
+    <div class="amt">${{ "%.2f"|format(credit.payment_due) }}</div>
+  </div>
+  {% endif %}
+
+  <h2 style="font-size:16px; margin:24px 0 12px;">Accounts</h2>
+
+  {% for id, acct in accounts.items() %}
+  <a class="acct card" href="/account/{{ id }}">
+    <div class="row">
+      <div>
+        <div style="font-weight:600;">{{ acct.name }}</div>
+        <div class="muted">{{ acct.type|capitalize }} · {{ acct.number }}</div>
+      </div>
+      <div class="balance {{ 'neg' if acct.balance < 0 else '' }}">
+        ${{ "%.2f"|format(acct.balance) }}
+      </div>
+    </div>
+  </a>
+  {% endfor %}
+
+{% endblock %}

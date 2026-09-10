@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}{{ account.name }} - Mock Bank{% endblock %}
+{% block content %}
+
+  <a class="back" href="/">← Back to dashboard</a>
+
+  <div class="card">
+    <div class="muted">{{ account.type|capitalize }} · {{ account.number }}</div>
+    <div style="font-weight:600; margin:2px 0 8px;">{{ account.name }}</div>
+    <div class="balance {{ 'neg' if account.balance < 0 else '' }}">
+      ${{ "%.2f"|format(account.balance) }}
+    </div>
+
+    {% if account.type == "credit" %}
+    <div class="muted" style="margin-top:8px;">
+      Credit limit ${{ "%.2f"|format(account.credit_limit) }} ·
+      Payment due ${{ "%.2f"|format(account.payment_due) }} by {{ account.due_date }}
+    </div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2 style="font-size:16px; margin:0 0 8px;">Transactions</h2>
+    <table>
+      <thead>
+        <tr><th>Date</th><th>Description</th><th style="text-align:right;">Amount</th></tr>
+      </thead>
+      <tbody>
+        {% for tx in transactions %}
+        <tr>
+          <td class="muted">{{ tx.date }}</td>
+          <td>{{ tx.description }}</td>
+          <td class="amt {{ 'pos' if tx.amount > 0 else 'neg' }}">
+            {{ '+' if tx.amount > 0 else '-' }}${{ "%.2f"|format(tx.amount|abs) }}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3" class="muted">No transactions.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+{% endblock %}

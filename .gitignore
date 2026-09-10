@@ -1,0 +1,9 @@
+# Claude Code local settings — never commit
+.claude/
+
+# Python virtual environment
+venv/
+
+# Python caches
+__pycache__/
+*.pyc
