@@ -14,7 +14,8 @@
     {% if account.type == "credit" %}
     <div class="muted" style="margin-top:8px;">
       Credit limit ${{ "%.2f"|format(account.credit_limit) }} ·
-      Payment due ${{ "%.2f"|format(account.payment_due) }} by {{ account.due_date }}
+      Payment due <span data-field="payment-due">${{ "%.2f"|format(account.payment_due) }}</span>
+      by <span data-field="due-date">{{ account.due_date }}</span>
     </div>
     {% endif %}
   </div>
