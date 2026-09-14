@@ -7,3 +7,13 @@ venv/
 # Python caches
 __pycache__/
 *.pyc
+
+# Runtime credentials, caches, browser dumps and unredacted diagnostics
+.env
+.env.*
+.venv/
+.pytest_cache/
+*.har
+trace.zip
+playwright-report/
+test-results/

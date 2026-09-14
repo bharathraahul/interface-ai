@@ -1,0 +1,214 @@
+{
+  "source": "simulated_handoff",
+  "scenario": "notice",
+  "status": "success",
+  "code": "",
+  "steps": 6,
+  "output_references": [
+    "out:savings_balance"
+  ],
+  "events": [
+    {
+      "step": 1,
+      "action": "open_login",
+      "decision": "ALLOW"
+    },
+    {
+      "event": "checkpoint",
+      "step": 1,
+      "verified": true
+    },
+    {
+      "event": "observe",
+      "snapshot": {
+        "surface_version": 1,
+        "route": "login",
+        "controls": [
+          {
+            "id": "username",
+            "label": "Username",
+            "visible": true,
+            "enabled": true
+          },
+          {
+            "id": "password",
+            "label": "Password",
+            "visible": true,
+            "enabled": true
+          },
+          {
+            "id": "sign_in",
+            "label": "Sign in",
+            "visible": true,
+            "enabled": true
+          }
+        ],
+        "untrusted_page_data": true
+      }
+    },
+    {
+      "step": 2,
+      "action": "fill_username",
+      "decision": "ALLOW"
+    },
+    {
+      "event": "observe",
+      "snapshot": {
+        "surface_version": 1,
+        "route": "login",
+        "controls": [
+          {
+            "id": "username",
+            "label": "Username",
+            "visible": true,
+            "enabled": true
+          },
+          {
+            "id": "password",
+            "label": "Password",
+            "visible": true,
+            "enabled": true
+          },
+          {
+            "id": "sign_in",
+            "label": "Sign in",
+            "visible": true,
+            "enabled": true
+          }
+        ],
+        "untrusted_page_data": true
+      }
+    },
+    {
+      "step": 3,
+      "action": "fill_password",
+      "decision": "ALLOW"
+    },
+    {
+      "event": "observe",
+      "snapshot": {
+        "surface_version": 1,
+        "route": "login",
+        "controls": [
+          {
+            "id": "username",
+            "label": "Username",
+            "visible": true,
+            "enabled": true
+          },
+          {
+            "id": "password",
+            "label": "Password",
+            "visible": true,
+            "enabled": true
+          },
+          {
+            "id": "sign_in",
+            "label": "Sign in",
+            "visible": true,
+            "enabled": true
+          }
+        ],
+        "untrusted_page_data": true
+      }
+    },
+    {
+      "step": 4,
+      "action": "sign_in",
+      "decision": "ALLOW"
+    },
+    {
+      "event": "checkpoint",
+      "step": 4,
+      "verified": true
+    },
+    {
+      "event": "handoff_started",
+      "owner": "human",
+      "same_session": true,
+      "snapshot": {
+        "surface_version": 1,
+        "route": "dashboard",
+        "controls": [
+          {
+            "id": "dismiss_notice",
+            "label": "Dismiss notice",
+            "visible": true,
+            "enabled": true
+          },
+          {
+            "id": "savings",
+            "label": "Savings account",
+            "visible": true,
+            "enabled": true
+          }
+        ],
+        "untrusted_page_data": true
+      }
+    },
+    {
+      "event": "handoff_resumed",
+      "state_verified": true
+    },
+    {
+      "event": "human_actions",
+      "actions": [
+        {
+          "kind": "click",
+          "control": "dismiss_notice"
+        }
+      ]
+    },
+    {
+      "event": "observe",
+      "snapshot": {
+        "surface_version": 1,
+        "route": "dashboard",
+        "controls": [
+          {
+            "id": "savings",
+            "label": "Savings account",
+            "visible": true,
+            "enabled": true
+          }
+        ],
+        "untrusted_page_data": true
+      }
+    },
+    {
+      "step": 5,
+      "action": "open_savings",
+      "decision": "ALLOW"
+    },
+    {
+      "event": "checkpoint",
+      "step": 5,
+      "verified": true
+    },
+    {
+      "event": "observe",
+      "snapshot": {
+        "surface_version": 1,
+        "route": "savings",
+        "controls": [
+          {
+            "id": "balance",
+            "label": "Savings balance",
+            "visible": true,
+            "enabled": true
+          }
+        ],
+        "untrusted_page_data": true
+      }
+    },
+    {
+      "step": 6,
+      "action": "read_balance",
+      "decision": "ALLOW"
+    },
+    {
+      "event": "outcome_verified",
+      "output_ref": "out:savings_balance"
+    }
+  ]
+}

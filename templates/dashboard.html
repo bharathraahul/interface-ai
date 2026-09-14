@@ -1,6 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Dashboard - Mock Bank{% endblock %}
+{% block title %}Dashboard - Mock Bank{% if scenario == 'duplicate_label' %}<a href="/account/savings">Savings</a>{% endif %}
+{% endblock %}
 {% block content %}
+{% if scenario == 'notice' %}
+<div role="dialog" id="notice"><p>Operator acknowledgement required</p>
+<button id="dismiss_notice" onclick="this.parentNode.remove()">Dismiss notice</button></div>
+{% endif %}
 
   <div class="card">
     <div class="muted">Total balance across accounts</div>
@@ -20,7 +25,9 @@
   <h2 style="font-size:16px; margin:24px 0 12px;">Accounts</h2>
 
   {% for id, acct in accounts.items() %}
-  <a class="acct card" href="/account/{{ id }}">
+  <a class="acct card" href="/account/{{ id }}" {% if id == 'savings' and scenario == 'hidden' %}style="display:none"{% endif %}
+     {% if id == 'savings' and scenario == 'disabled' %}aria-disabled="true"{% endif %}
+     {% if id == 'savings' and scenario == 'stale' %}onpointerdown="this.remove()"{% endif %}>
     <div class="row">
       <div>
         <div style="font-weight:600;">{{ acct.name }}</div>
@@ -33,4 +40,5 @@
   </a>
   {% endfor %}
 
+{% if scenario == 'duplicate_label' %}<a href="/account/savings">Savings</a>{% endif %}
 {% endblock %}

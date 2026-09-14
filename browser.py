@@ -1,51 +1,101 @@
-"""Browser interaction layer.
-
-A thin wrapper over Playwright that gives the backend six primitive tools for
-driving a web UI:
-
-    observe()   -> see the current page (url, title, text, clickable controls)
-    click()     -> click an identified control
-    fill()      -> type a value into a field
-    wait_for()  -> block until a UI condition is true
-    extract()   -> read a value out of the page
-    check()     -> confirm the expected state was reached
-
-Controls can be identified two ways (the `by` argument):
-    by="text"  -> human-visible label, e.g. "Platinum Credit Card"  (default)
-    by="css"   -> a CSS selector, e.g. '[data-field="payment-due"]'
-"""
-
+"""Playwright tools with a minimal semantic view and context-wide policy guard."""
+from urllib.parse import urlsplit
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
+from outcomes import HardFailure, RecoverableError, PolicyBlocked
+from policy import Policy
+from surface import CONTROLS, ROUTES
 
-# What counts as an actionable control. Text that isn't inside one of these
-# (headings, banners, labels) is never a click target — this is the core
-# disambiguation rule that keeps a text match from hitting decorative copy.
-CLICKABLE = "a, button, [role=button], input[type=button], input[type=submit]"
+class ControlNotFound(RecoverableError):
+    pass
 
-
-class ControlNotFound(Exception):
-    """No control matched the identifier."""
-
-
-class AmbiguousControl(Exception):
-    """Several equally-specific controls matched; caller must narrow it down."""
-
+class AmbiguousControl(HardFailure):
+    pass
 
 class Browser:
-    def __init__(self, base_url="http://127.0.0.1:8000", headless=True, timeout=5000):
+    def __init__(self, base_url="http://127.0.0.1:8000", headless=True, timeout=3000, policy=None):
         self.base_url = base_url.rstrip("/")
-        self.headless = headless
-        self.timeout = timeout          # default wait, in milliseconds
-        self._pw = None
-        self._browser = None
-        self.page = None
+        self.headless, self.timeout = headless, timeout
+        self.policy = policy or Policy(allowed_domains=[urlsplit(self.base_url).netloc])
+        self.owner = "automation"
+        self.violation = None
+        self.problem = None
+        self.human_events = []
+        self._pw = self._browser = self.page = self.context = None
 
-    # --- lifecycle -------------------------------------------------------
     def start(self):
         self._pw = sync_playwright().start()
         self._browser = self._pw.chromium.launch(headless=self.headless)
-        self.page = self._browser.new_page()
+        self.context = self._browser.new_context(service_workers="block", accept_downloads=False)
+        self.context.set_default_timeout(self.timeout)
+        self.context.set_default_navigation_timeout(self.timeout)
+        self.context.route("**/*", self._guard_request)
+        self.context.route_web_socket("**/*", lambda ws: ws.close())
+        self.context.on("page", self._new_page)
+        self.context.expose_binding("recordHumanAction", self._human_event)
+        # Serialize only a closed semantic ID. Never capture text, values, HTML or URLs.
+        import json
+        selectors = json.dumps({key: val[0] for key, val in CONTROLS.items()})
+        self.context.add_init_script("""(() => {
+          const selectors = SELECTORS;
+          for (const kind of ['click', 'change']) document.addEventListener(kind, e => {
+            if (!e.isTrusted) return;
+            let control = 'unknown';
+            for (const [key, selector] of Object.entries(selectors))
+              if (e.target.closest(selector)) { control = key; break; }
+            window.recordHumanAction({kind, control});
+          }, true);
+        })();""".replace("SELECTORS", selectors))
+        self.page = self.context.new_page()
         return self
+
+    def _new_page(self, page):
+        if self.page is not None:
+            self.violation = "new_tab_blocked"
+            page.close()
+            return
+        page.on("dialog", self._dialog)
+        page.on("download", lambda download: download.cancel())
+        page.on("pageerror", lambda error: setattr(self, "problem", "application_error"))
+        page.on("framenavigated", self._navigated)
+
+    def _navigated(self, frame):
+        if frame.parent_frame is not None:
+            self.violation = "iframe_unsupported"
+        if self.owner == "human":
+            self.human_events.append({"kind": "navigation", "control": "route"})
+
+    def _human_event(self, source, event):
+        if self.owner != "human" or not isinstance(event, dict):
+            return
+        kind = event.get("kind")
+        control = event.get("control")
+        self.human_events.append({"kind": kind if kind in {"click", "change"} else "unknown",
+                                  "control": control if control in CONTROLS else "unknown"})
+
+    def _dialog(self, dialog):
+        known = dialog.type == "alert" and dialog.message == "Session notice"
+        dialog.dismiss()
+        if not known:
+            self.problem = "unknown_dialog"
+
+    def _guard_request(self, route):
+        request = route.request
+        if not self.policy.url_allowed(request.url, self.base_url, request.method):
+            self.violation = "prohibited_navigation"
+            route.abort()
+            return
+        # Fetch redirects one hop at a time: every Location is independently
+        # intercepted/validated. Raw responses never enter model or telemetry.
+        try:
+            response = route.fetch(max_redirects=0, timeout=self.timeout)
+            if response.status >= 500:
+                self.problem = "application_error"
+            elif response.status == 403:
+                self.problem = "permission_denied"
+            route.fulfill(response=response)
+        except Exception:
+            self.problem = "network_failure"
+            route.abort()
 
     def stop(self):
         if self._browser:
@@ -54,115 +104,123 @@ class Browser:
             self._pw.stop()
 
     def __enter__(self):
-        return self.start()
+        try:
+            return self.start()
+        except Exception:
+            self.stop()
+            raise HardFailure("browser_unavailable") from None
 
     def __exit__(self, *exc):
         self.stop()
 
+    def guard(self, acting=False):
+        if acting and self.owner != "automation":
+            raise HardFailure("automation_paused")
+        if not self.page or self.page.is_closed():
+            raise HardFailure("browser_closed")
+        if self.violation:
+            raise PolicyBlocked(self.violation)
+        if self.problem == "permission_denied":
+            raise HardFailure("permission_denied")
+        if self.problem:
+            raise RecoverableError(self.problem)
+        if len(self.page.frames) != 1:
+            raise HardFailure("iframe_unsupported")
+        if self.page.url != "about:blank" and not self.policy.url_allowed(self.page.url, self.base_url):
+            raise PolicyBlocked("prohibited_navigation")
+
+    def _route(self):
+        return urlsplit(self.page.url).path or "/"
+
     def goto(self, path="/"):
-        self.page.goto(self.base_url + path)
+        self.guard(acting=True)
+        url = self.base_url + path
+        if not self.policy.url_allowed(url, self.base_url):
+            raise PolicyBlocked("prohibited_navigation")
+        self.page.goto(url, wait_until="domcontentloaded")
+        self.guard()
 
-    # --- internal helpers ------------------------------------------------
-    def _locate(self, target, by):
-        """Return a Playwright locator for reading (extract/check/wait)."""
+    def resolve(self, target, by="css", visible=True):
         if by == "css":
-            return self.page.locator(target)
-        if by == "label":
-            return self.page.get_by_label(target)
-        return self.page.get_by_text(target, exact=False)
+            loc = self.page.locator(target)
+        elif by == "label":
+            loc = self.page.get_by_label(target, exact=True)
+        elif by == "text":
+            loc = self.page.get_by_text(target, exact=True)
+        else:
+            raise HardFailure("invalid_locator")
+        # Never pick .first or use positional fallback, including hidden duplicates.
+        if loc.count() > 1:
+            raise AmbiguousControl("ambiguous_control")
+        if loc.count() == 0:
+            raise ControlNotFound("missing_control")
+        if visible and not loc.is_visible():
+            raise ControlNotFound("hidden_control")
+        if not loc.is_enabled():
+            raise ControlNotFound("disabled_control")
+        return loc
 
-    def _resolve_click(self, target, index):
-        """Apply the disambiguation rules and return one control to click.
-
-        Rules, in order:
-          1. Only interactive controls are candidates (CLICKABLE).
-          2. Only visible ones.
-          3. If the caller passed an explicit `index`, use it.
-          4. If exactly one candidate, use it.
-          5. Otherwise prefer the most specific — the control whose own text is
-             shortest (least surrounding chrome).
-          6. If several are equally specific, refuse and report the choices.
-        """
-        loc = self.page.locator(CLICKABLE).filter(has_text=target)
-        candidates = [loc.nth(i) for i in range(loc.count()) if loc.nth(i).is_visible()]
-
-        if not candidates:
-            raise ControlNotFound(f"No clickable control matching {target!r}")
-        if index is not None:
-            return candidates[index]
-        if len(candidates) == 1:
-            return candidates[0]
-
-        candidates.sort(key=lambda el: len(el.inner_text().strip()))
-        shortest = len(candidates[0].inner_text().strip())
-        tied = [c for c in candidates if len(c.inner_text().strip()) == shortest]
-        if len(tied) > 1:
-            texts = [c.inner_text().strip() for c in candidates]
-            raise AmbiguousControl(
-                f"{target!r} matched {len(candidates)} controls: {texts}. "
-                f"Pass index= to choose."
-            )
-        return candidates[0]
-
-    # --- the six tools ---------------------------------------------------
-    def observe(self):
-        """Snapshot the current page: what it is and what can be acted on.
-
-        `controls` lists the actionable elements with an index, so a caller can
-        disambiguate by passing that index back to click().
-        """
-        loc = self.page.locator(CLICKABLE)
+    def observe(self, sanitize=True):
+        self.guard()
+        if not sanitize:
+            raise HardFailure("raw_observation_disabled")
+        route = ROUTES.get(self._route(), "unknown")
         controls = []
-        for i in range(loc.count()):
-            el = loc.nth(i)
-            if not el.is_visible():
-                continue
-            controls.append({
-                "index": len(controls),
-                "text": (el.inner_text() or "").strip(),
-                "tag": el.evaluate("e => e.tagName.toLowerCase()"),
-                "href": el.get_attribute("href"),
-            })
-        return {
-            "url": self.page.url,
-            "title": self.page.title(),
-            "text": self.page.locator("body").inner_text().strip(),
-            "controls": controls,
-        }
+        for key, (selector, label) in CONTROLS.items():
+            loc = self.page.locator(selector)
+            if loc.count():
+                if loc.count() > 1:
+                    raise AmbiguousControl("ambiguous_control")
+                controls.append({"id": key, "label": label,
+                                 "visible": loc.is_visible(), "enabled": loc.is_enabled()})
+        return {"surface_version": 1, "route": route, "controls": controls,
+                "untrusted_page_data": True}
 
     def click(self, target, by="text", index=None):
-        """Click an identified control.
+        self.guard(acting=True)
+        if index is not None:
+            raise AmbiguousControl("positional_locator_denied")
+        self.resolve(target, by).click(timeout=self.timeout)
+        self.guard()
 
-        by="text" (default) applies the disambiguation rules above.
-        by="css"  clicks the first match of an explicit selector, as given.
-        `index` forces a specific candidate when text matches several.
-        """
-        if by == "css":
-            self.page.locator(target).first.click(timeout=self.timeout)
-            return
-        self._resolve_click(target, index).click(timeout=self.timeout)
-
-    def fill(self, target, value, by="label"):
-        """Type `value` into an identified field."""
-        self._locate(target, by).first.fill(value, timeout=self.timeout)
+    def fill(self, target, value, by="css"):
+        self.guard(acting=True)
+        self.resolve(target, by).fill(value, timeout=self.timeout)
+        self.guard()
 
     def wait_for(self, target, by="text", timeout=None):
-        """Block until a control/condition is visible. Returns True/False."""
+        self.guard(acting=True)
         try:
-            self._locate(target, by).first.wait_for(
-                state="visible", timeout=timeout or self.timeout
-            )
+            # Locator resolution is repeated after the bounded wait, so duplicates
+            # or a late hidden replacement cannot be silently accepted.
+            loc = self.page.locator(target) if by == "css" else self.page.get_by_text(target, exact=True)
+            loc.wait_for(state="visible", timeout=timeout or self.timeout)
+            self.resolve(target, by)
+            self.guard()
             return True
         except PlaywrightTimeout:
             return False
 
     def extract(self, target, by="css"):
-        """Read the text of an identified element. Returns None if absent."""
-        locator = self._locate(target, by).first
-        if locator.count() == 0:
-            return None
-        return locator.inner_text().strip()
+        self.guard(acting=True)
+        return self.resolve(target, by).inner_text(timeout=self.timeout).strip()
 
     def check(self, target, by="text"):
-        """Confirm the expected state exists on the page. Returns True/False."""
-        return self._locate(target, by).count() > 0
+        self.guard()
+        self.resolve(target, by)
+        return True
+
+    def backend_state(self):
+        self.guard()
+        try:
+            response = self.context.request.get(self.base_url + "/api/session",
+                                                timeout=self.timeout, max_redirects=0)
+            if response.status == 401:
+                raise RecoverableError("session_expired")
+            if response.status != 200:
+                raise HardFailure("verification_failed")
+            return response.json()
+        except (RecoverableError, HardFailure):
+            raise
+        except Exception:
+            raise RecoverableError("verification_unavailable") from None

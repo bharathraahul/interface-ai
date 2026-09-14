@@ -1,0 +1,24 @@
+{
+  "source": "llm_discovery",
+  "scenario": "normal",
+  "status": "recoverable_error",
+  "code": "model_unavailable",
+  "steps": 0,
+  "output_references": [],
+  "events": [
+    {
+      "event": "failure_snapshot",
+      "snapshot": {
+        "surface_version": 1,
+        "route": "unknown",
+        "controls": [],
+        "untrusted_page_data": true
+      }
+    },
+    {
+      "event": "stopped",
+      "status": "recoverable_error",
+      "code": "model_unavailable"
+    }
+  ]
+}

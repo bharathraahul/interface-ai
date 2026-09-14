@@ -1,0 +1,122 @@
+[
+  {
+    "scenario": "nonexistent_member",
+    "status": "business_outcome",
+    "code": "invalid_credentials"
+  },
+  {
+    "scenario": "validation_error",
+    "status": "business_outcome",
+    "code": "invalid_credentials"
+  },
+  {
+    "scenario": "multiple_members",
+    "status": "business_outcome",
+    "code": "multiple_members"
+  },
+  {
+    "scenario": "no_savings",
+    "status": "business_outcome",
+    "code": "no_savings"
+  },
+  {
+    "scenario": "multiple_savings",
+    "status": "business_outcome",
+    "code": "multiple_savings"
+  },
+  {
+    "scenario": "wrong_member",
+    "status": "hard_failure",
+    "code": "wrong_member"
+  },
+  {
+    "scenario": "unexpected_currency",
+    "status": "hard_failure",
+    "code": "unexpected_currency"
+  },
+  {
+    "scenario": "invalid_number",
+    "status": "hard_failure",
+    "code": "invalid_money"
+  },
+  {
+    "scenario": "missing_output",
+    "status": "recoverable_error",
+    "code": "missing_control"
+  },
+  {
+    "scenario": "hidden",
+    "status": "recoverable_error",
+    "code": "hidden_control"
+  },
+  {
+    "scenario": "disabled",
+    "status": "recoverable_error",
+    "code": "disabled_control"
+  },
+  {
+    "scenario": "duplicate_label",
+    "status": "hard_failure",
+    "code": "ambiguous_control"
+  },
+  {
+    "scenario": "changed_layout",
+    "status": "recoverable_error",
+    "code": "missing_control"
+  },
+  {
+    "scenario": "partial",
+    "status": "recoverable_error",
+    "code": "missing_control"
+  },
+  {
+    "scenario": "session_expiry",
+    "status": "recoverable_error",
+    "code": "session_expired"
+  },
+  {
+    "scenario": "unexpected_login",
+    "status": "recoverable_error",
+    "code": "session_expired"
+  },
+  {
+    "scenario": "permission_denied",
+    "status": "hard_failure",
+    "code": "permission_denied"
+  },
+  {
+    "scenario": "application_error",
+    "status": "recoverable_error",
+    "code": "application_error"
+  },
+  {
+    "scenario": "unknown_dialog",
+    "status": "recoverable_error",
+    "code": "unknown_dialog"
+  },
+  {
+    "scenario": "iframe",
+    "status": "hard_failure",
+    "code": "iframe_unsupported"
+  },
+  {
+    "scenario": "changed_route",
+    "status": "hard_failure",
+    "code": "prohibited_navigation"
+  },
+  {
+    "scenario": "prohibited_redirect",
+    "status": "hard_failure",
+    "code": "prohibited_navigation"
+  },
+  {
+    "scenario": "new_tab",
+    "status": "hard_failure",
+    "code": "new_tab_blocked"
+  },
+  {
+    "scenario": "notice",
+    "status": "recoverable_error",
+    "code": "human_required"
+  }
+]

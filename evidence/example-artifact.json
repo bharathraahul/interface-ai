@@ -1,0 +1,138 @@
+{
+  "name": "savings_balance",
+  "version": 1,
+  "description": "Sign in as a member and read their savings account balance.",
+  "success_condition": "Authenticated member matches input; exactly one savings account; USD balance matches backend.",
+  "created_at": "2026-09-13T17:01:50+00:00",
+  "schema_version": 1,
+  "inputs": [
+    {
+      "name": "username",
+      "type": "string",
+      "required": true,
+      "secret": true
+    },
+    {
+      "name": "password",
+      "type": "string",
+      "required": true,
+      "secret": true
+    }
+  ],
+  "actions": [
+    {
+      "step": 1,
+      "tool": "navigate",
+      "by": "css",
+      "target": "/login",
+      "value_ref": null,
+      "description": "",
+      "risky": false
+    },
+    {
+      "step": 2,
+      "tool": "fill",
+      "by": "css",
+      "target": "#username",
+      "value_ref": "secret:username",
+      "description": "",
+      "risky": false
+    },
+    {
+      "step": 3,
+      "tool": "fill",
+      "by": "css",
+      "target": "#password",
+      "value_ref": "secret:password",
+      "description": "",
+      "risky": false
+    },
+    {
+      "step": 4,
+      "tool": "click",
+      "by": "css",
+      "target": "button[type=\"submit\"]",
+      "value_ref": null,
+      "description": "",
+      "risky": false
+    },
+    {
+      "step": 5,
+      "tool": "click",
+      "by": "css",
+      "target": "a[href=\"/account/savings\"]",
+      "value_ref": null,
+      "description": "",
+      "risky": false
+    },
+    {
+      "step": 6,
+      "tool": "extract",
+      "by": "css",
+      "target": "[data-field=\"balance\"]",
+      "value_ref": null,
+      "description": "",
+      "risky": false
+    }
+  ],
+  "outputs": [
+    {
+      "name": "savings_balance",
+      "by": "css",
+      "target": "[data-field=\"balance\"]",
+      "type": "money",
+      "sensitive": true
+    }
+  ],
+  "checkpoints": [
+    {
+      "after_step": 1,
+      "kind": "route_equals",
+      "value": "/login"
+    },
+    {
+      "after_step": 4,
+      "kind": "route_equals",
+      "value": "/"
+    },
+    {
+      "after_step": 5,
+      "kind": "route_equals",
+      "value": "/account/savings"
+    }
+  ],
+  "metadata": {
+    "surface_version": 1,
+    "source": "test_fixture",
+    "recovery": {
+      "observation_retries": 2,
+      "uncertain_action": "stop",
+      "known_notice": "handoff",
+      "unknown_state": "stop"
+    },
+    "outcomes": {
+      "success": "backend_verified",
+      "business_outcome": [
+        "invalid_credentials",
+        "multiple_members",
+        "no_savings",
+        "multiple_savings"
+      ],
+      "recoverable_error": [
+        "session_expired",
+        "unexpected_login",
+        "verification_unavailable",
+        "network_failure",
+        "model_unavailable",
+        "human_required",
+        "unknown_dialog",
+        "missing_control",
+        "hidden_control",
+        "disabled_control",
+        "wait_timeout",
+        "application_error"
+      ],
+      "hard_failure": "all_other_conditions"
+    }
+  }
+}

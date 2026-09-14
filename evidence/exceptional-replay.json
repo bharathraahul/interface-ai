@@ -1,0 +1,133 @@
+{
+  "source": "replay",
+  "scenario": "no_savings",
+  "status": "business_outcome",
+  "code": "no_savings",
+  "steps": 4,
+  "output_references": [],
+  "events": [
+    {
+      "step": 1,
+      "action": "open_login",
+      "decision": "ALLOW"
+    },
+    {
+      "event": "checkpoint",
+      "step": 1,
+      "verified": true
+    },
+    {
+      "event": "observe",
+      "snapshot": {
+        "surface_version": 1,
+        "route": "login",
+        "controls": [
+          {
+            "id": "username",
+            "label": "Username",
+            "visible": true,
+            "enabled": true
+          },
+          {
+            "id": "password",
+            "label": "Password",
+            "visible": true,
+            "enabled": true
+          },
+          {
+            "id": "sign_in",
+            "label": "Sign in",
+            "visible": true,
+            "enabled": true
+          }
+        ],
+        "untrusted_page_data": true
+      }
+    },
+    {
+      "step": 2,
+      "action": "fill_username",
+      "decision": "ALLOW"
+    },
+    {
+      "event": "observe",
+      "snapshot": {
+        "surface_version": 1,
+        "route": "login",
+        "controls": [
+          {
+            "id": "username",
+            "label": "Username",
+            "visible": true,
+            "enabled": true
+          },
+          {
+            "id": "password",
+            "label": "Password",
+            "visible": true,
+            "enabled": true
+          },
+          {
+            "id": "sign_in",
+            "label": "Sign in",
+            "visible": true,
+            "enabled": true
+          }
+        ],
+        "untrusted_page_data": true
+      }
+    },
+    {
+      "step": 3,
+      "action": "fill_password",
+      "decision": "ALLOW"
+    },
+    {
+      "event": "observe",
+      "snapshot": {
+        "surface_version": 1,
+        "route": "login",
+        "controls": [
+          {
+            "id": "username",
+            "label": "Username",
+            "visible": true,
+            "enabled": true
+          },
+          {
+            "id": "password",
+            "label": "Password",
+            "visible": true,
+            "enabled": true
+          },
+          {
+            "id": "sign_in",
+            "label": "Sign in",
+            "visible": true,
+            "enabled": true
+          }
+        ],
+        "untrusted_page_data": true
+      }
+    },
+    {
+      "step": 4,
+      "action": "sign_in",
+      "decision": "ALLOW"
+    },
+    {
+      "event": "failure_snapshot",
+      "snapshot": {
+        "surface_version": 1,
+        "route": "dashboard",
+        "controls": [],
+        "untrusted_page_data": true
+      }
+    },
+    {
+      "event": "stopped",
+      "status": "business_outcome",
+      "code": "no_savings"
+    }
+  ]
+}

@@ -4,11 +4,11 @@
 
   <a class="back" href="/">← Back to dashboard</a>
 
-  <div class="card">
+  <div class="card" data-account-id="{{ account_id }}" data-account-type="{{ account.type }}">
     <div class="muted">{{ account.type|capitalize }} · {{ account.number }}</div>
     <div style="font-weight:600; margin:2px 0 8px;">{{ account.name }}</div>
-    <div class="balance {{ 'neg' if account.balance < 0 else '' }}">
-      ${{ "%.2f"|format(account.balance) }}
+    <div class="balance {{ 'neg' if account.balance < 0 else '' }}" {% if scenario not in ['missing_output', 'changed_layout', 'partial'] %}data-field="balance"{% endif %}>
+      {% if scenario == 'unexpected_currency' %}EUR {{ "%.2f"|format(account.balance) }}{% elif scenario == 'invalid_number' %}$1.234,56{% else %}${{ "%.2f"|format(account.balance) }}{% endif %}
     </div>
 
     {% if account.type == "credit" %}
