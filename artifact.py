@@ -10,7 +10,7 @@ deterministically — no LLM. It contains:
   success_condition — human-readable statement of "done"
 
 `value_ref` on an action points at a reference resolved at replay time:
-  "input:username"  -> a plain typed input
+  "secret:username" -> a backend member identifier
   "secret:password" -> a backend secret (never stored here)
 """
 
@@ -51,7 +51,7 @@ class OutputSpec:
 @dataclass
 class Checkpoint:
     after_step: int
-    kind: str                       # route_contains | text_present
+    kind: str                       # route_equals (schema v1)
     value: str
 
 
@@ -80,14 +80,46 @@ class Artifact:
 
     @staticmethod
     def load(path):
-        with open(path) as f:
-            return Artifact.from_dict(json.load(f))
+        from outcomes import HardFailure
+        def unique_object(pairs):
+            document = {}
+            for key, value in pairs:
+                if key in document:
+                    raise HardFailure("invalid_artifact")
+                document[key] = value
+            return document
+        try:
+            with open(path, "rb") as stream:
+                content = stream.read(65537)
+            if len(content) > 65536:
+                raise HardFailure("artifact_too_large")
+            return Artifact.from_dict(json.loads(content, object_pairs_hook=unique_object))
+        except HardFailure:
+            raise
+        except Exception:
+            raise HardFailure("invalid_artifact") from None
 
     @staticmethod
     def from_dict(d):
+        from outcomes import HardFailure
+        try:
+            return Artifact._from_dict(d)
+        except HardFailure:
+            raise
+        except Exception:
+            raise HardFailure("invalid_artifact") from None
+
+    @staticmethod
+    def _from_dict(d):
         if not isinstance(d, dict) or set(d) != set(Artifact.__dataclass_fields__):
             from outcomes import HardFailure
             raise HardFailure("invalid_artifact")
+        for name, record in [("inputs", InputSpec), ("actions", ActionSpec),
+                             ("outputs", OutputSpec), ("checkpoints", Checkpoint)]:
+            if type(d[name]) is not list or any(type(x) is not dict or set(x) != set(record.__dataclass_fields__)
+                                              for x in d[name]):
+                from outcomes import HardFailure
+                raise HardFailure("invalid_artifact")
         artifact = Artifact(
             name=d["name"], version=d["version"], description=d["description"],
             success_condition=d["success_condition"], created_at=d.get("created_at", ""),
@@ -103,6 +135,15 @@ class Artifact:
         return artifact
 
     def validate(self):
+        from outcomes import HardFailure
+        try:
+            return self._validate()
+        except HardFailure:
+            raise
+        except Exception:
+            raise HardFailure("invalid_artifact") from None
+
+    def _validate(self):
         from outcomes import HardFailure
         from surface import action_id, SURFACE_VERSION, SUCCESS, RECOVERY, OUTCOME_RULES
         from workflow import SAVINGS_BALANCE
@@ -120,6 +161,11 @@ class Artifact:
             raise HardFailure("invalid_artifact_contract")
         if not re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\+00:00", self.created_at):
             raise HardFailure("invalid_artifact_timestamp")
+        from datetime import datetime
+        try:
+            datetime.fromisoformat(self.created_at)
+        except ValueError:
+            raise HardFailure("invalid_artifact_timestamp") from None
         if (set(self.metadata) != {"surface_version", "source", "recovery", "outcomes"}
                 or type(self.metadata["surface_version"]) is not int
                 or self.metadata["surface_version"] != SURFACE_VERSION
@@ -127,19 +173,24 @@ class Artifact:
                 or self.metadata["recovery"] != RECOVERY
                 or self.metadata["outcomes"] != OUTCOME_RULES):
             raise HardFailure("invalid_artifact_metadata")
-        if not 5 <= len(self.actions) <= 16:
+        if (json.dumps(self.metadata["recovery"], sort_keys=True) != json.dumps(RECOVERY, sort_keys=True)
+                or any(type(c.after_step) is not int for c in self.checkpoints)):
+            raise HardFailure("invalid_artifact")
+        if not 6 <= len(self.actions) <= 16:
             raise HardFailure("invalid_artifact_steps")
         keys = []
         for i, action in enumerate(self.actions, 1):
             if type(action.step) is not int or action.step != i:
                 raise HardFailure("invalid_step_number")
+            if type(action.risky) is not bool:
+                raise HardFailure("invalid_action")
             keys.append(action_id(action))
         # v1 admits optional bounded waits but requires the complete safe sequence.
         core = [k for k in keys if k != "wait_balance"]
         if core not in (["open_login", "fill_username", "fill_password", "sign_in", "open_savings", "read_balance"],
                         ["open_login", "fill_password", "fill_username", "sign_in", "open_savings", "read_balance"]):
             raise HardFailure("invalid_artifact_sequence")
-        if keys.count("wait_balance") > 2 or any(k == "wait_balance" and "open_savings" not in keys[:i]
+        if keys.count("wait_balance") > 2 or any(k == "wait_balance" and ("open_savings" not in keys[:i] or "read_balance" in keys[:i])
                                                    for i, k in enumerate(keys)):
             raise HardFailure("invalid_wait_sequence")
         required = [Checkpoint(i + 1, "route_equals", route) for i, k in enumerate(keys)

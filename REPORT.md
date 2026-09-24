@@ -55,7 +55,7 @@ The runtime enforces step, wall-clock and browser-operation limits plus repeated
 detection. Only read-only observation verification retries, twice at most. Uncertain
 clicks, submissions, fills and navigations never repeat automatically. Missing output,
 changed layout and expired sessions stop instead of guessing or returning stale data.
-Known alerts are dismissed; unknown dialogs stop. Frames and new tabs are unsupported
+Known alerts are dismissed; visible HTML modal variants and unknown native dialogs stop. Frames and new tabs are unsupported
 and stop safely. The README maps every requested edge case to automatic handling,
 a business outcome, a recoverable stop or a hard failure.
 
@@ -87,7 +87,7 @@ per-tenant app state, caller authorization, secrets management and deployment is
 The supported resumable escalation is a known operator notice. Automation pauses and
 transfers exclusive tool ownership to the local operator in the same live Chromium
 page and context. The operator dismisses the notice and requests resume through the
-terminal. Browser event capture records only trusted semantic control IDs and event
+terminal. Nonblocking Unix input polling prevents abandoned readers after timeout. Browser event capture records only trusted semantic control IDs and event
 kinds, never field contents. Resume verifies the original route, authenticated member,
 account cardinality and absence of unresolved dialogs. Automation calls fail while
 human ownership is active.
@@ -110,11 +110,13 @@ are blocked in this read-only workflow, including policy decisions requiring app
 
 Context-wide interception validates requests and redirects, service workers are disabled,
 WebSockets are blocked, and new pages are closed. The verification request uses a fixed
-same-origin endpoint without redirects. Evidence consists of semantic snapshots and
-constructed events. Raw screenshots, HARs and browser traces are deliberately disabled.
+same-origin endpoint without redirects. The outgoing model payload is independently validated, and SDK diagnostic logs are suppressed.
+Evidence consists of semantic snapshots and constructed events. Raw screenshots, HARs and browser traces are deliberately disabled.
 The file audit validates artifact structure and evidence vocabulary in addition to
 checking token patterns. It is not a proof against arbitrary future logging changes;
-new sinks and adapters must preserve these boundaries and add privacy tests.
+new sinks and adapters must preserve these boundaries and add privacy tests. The consolidated
+[evidence/EDGE_CASES.md](evidence/EDGE_CASES.md) maps requested cases to tests and identifies
+remaining live checks.
 
 # Cuts
 

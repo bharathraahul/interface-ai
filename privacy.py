@@ -42,3 +42,36 @@ def save_json(path, value):
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, indent=2) + "\n")
+
+
+def model_payload(observation, offered, completed):
+    """Validate the outgoing model boundary independently of the browser adapter."""
+    from outcomes import HardFailure
+    from surface import ACTIONS, CONTROLS, ROUTES
+    try:
+        valid = (type(observation) is dict
+                 and set(observation) == {"surface_version", "route", "controls", "untrusted_page_data"}
+                 and type(observation["surface_version"]) is int and observation["surface_version"] == 1
+                 and observation["route"] in ROUTES.values()
+                 and observation["untrusted_page_data"] is True
+                 and type(observation["controls"]) is list
+                 and len(observation["controls"]) <= len(CONTROLS))
+        seen = set()
+        if not valid:
+            raise ValueError()
+        for control in observation["controls"]:
+            if (type(control) is not dict or set(control) != {"id", "label", "visible", "enabled"}
+                    or control["id"] not in CONTROLS or control["id"] in seen
+                    or control["label"] != CONTROLS[control["id"]][1]
+                    or type(control["visible"]) is not bool or type(control["enabled"]) is not bool):
+                raise ValueError()
+            seen.add(control["id"])
+        if (type(offered) is not list or not offered or len(offered) > len(ACTIONS)
+                or type(completed) is not list or len(completed) > 64
+                or any(type(key) is not str or key not in ACTIONS for key in offered + completed)):
+            raise ValueError()
+    except (ValueError, KeyError, TypeError):
+        raise HardFailure("sensitive_data_blocked") from None
+    return {"goal": "Retrieve savings balance", "observation": observation,
+            "offered_actions": offered, "completed": completed,
+            "input_references": ["secret:username", "secret:password"]}

@@ -3,7 +3,7 @@
   "version": 1,
   "description": "Sign in as a member and read their savings account balance.",
   "success_condition": "Authenticated member matches input; exactly one savings account; USD balance matches backend.",
-  "created_at": "2026-09-13T17:01:50+00:00",
+  "created_at": "2026-09-24T02:57:46+00:00",
   "schema_version": 1,
   "inputs": [
     {

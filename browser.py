@@ -1,4 +1,5 @@
 """Playwright tools with a minimal semantic view and context-wide policy guard."""
+import time
 from urllib.parse import urlsplit
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 from outcomes import HardFailure, RecoverableError, PolicyBlocked
@@ -17,14 +18,34 @@ class Browser:
         self.headless, self.timeout = headless, timeout
         self.policy = policy or Policy(allowed_domains=[urlsplit(self.base_url).netloc])
         self.owner = "automation"
+        self.deadline = None
         self.violation = None
         self.problem = None
         self.human_events = []
         self._pw = self._browser = self.page = self.context = None
 
+    def remaining_ms(self, cap=None):
+        cap = self.timeout if cap is None else cap
+        if self.deadline is None:
+            return cap
+        remaining = int((self.deadline - time.monotonic()) * 1000)
+        if remaining <= 0:
+            raise HardFailure("deadline_exceeded")
+        return min(cap, remaining)
+
     def start(self):
+        try:
+            return self._start()
+        except HardFailure:
+            self.stop()
+            raise
+        except Exception:
+            self.stop()
+            raise HardFailure("browser_unavailable") from None
+
+    def _start(self):
         self._pw = sync_playwright().start()
-        self._browser = self._pw.chromium.launch(headless=self.headless)
+        self._browser = self._pw.chromium.launch(headless=self.headless, timeout=self.remaining_ms(30000))
         self.context = self._browser.new_context(service_workers="block", accept_downloads=False)
         self.context.set_default_timeout(self.timeout)
         self.context.set_default_navigation_timeout(self.timeout)
@@ -87,9 +108,11 @@ class Browser:
         # Fetch redirects one hop at a time: every Location is independently
         # intercepted/validated. Raw responses never enter model or telemetry.
         try:
-            response = route.fetch(max_redirects=0, timeout=self.timeout)
+            response = route.fetch(max_redirects=0, timeout=self.remaining_ms())
             if response.status >= 500:
                 self.problem = "application_error"
+            elif response.status == 401:
+                self.problem = "session_expired"
             elif response.status == 403:
                 self.problem = "permission_denied"
             route.fulfill(response=response)
@@ -104,11 +127,7 @@ class Browser:
             self._pw.stop()
 
     def __enter__(self):
-        try:
-            return self.start()
-        except Exception:
-            self.stop()
-            raise HardFailure("browser_unavailable") from None
+        return self.start()
 
     def __exit__(self, *exc):
         self.stop()
@@ -118,6 +137,7 @@ class Browser:
             raise HardFailure("automation_paused")
         if not self.page or self.page.is_closed():
             raise HardFailure("browser_closed")
+        self.remaining_ms()
         if self.violation:
             raise PolicyBlocked(self.violation)
         if self.problem == "permission_denied":
@@ -137,7 +157,7 @@ class Browser:
         url = self.base_url + path
         if not self.policy.url_allowed(url, self.base_url):
             raise PolicyBlocked("prohibited_navigation")
-        self.page.goto(url, wait_until="domcontentloaded")
+        self.page.goto(url, wait_until="domcontentloaded", timeout=self.remaining_ms())
         self.guard()
 
     def resolve(self, target, by="css", visible=True):
@@ -180,12 +200,12 @@ class Browser:
         self.guard(acting=True)
         if index is not None:
             raise AmbiguousControl("positional_locator_denied")
-        self.resolve(target, by).click(timeout=self.timeout)
+        self.resolve(target, by).click(timeout=self.remaining_ms())
         self.guard()
 
     def fill(self, target, value, by="css"):
         self.guard(acting=True)
-        self.resolve(target, by).fill(value, timeout=self.timeout)
+        self.resolve(target, by).fill(value, timeout=self.remaining_ms())
         self.guard()
 
     def wait_for(self, target, by="text", timeout=None):
@@ -194,7 +214,7 @@ class Browser:
             # Locator resolution is repeated after the bounded wait, so duplicates
             # or a late hidden replacement cannot be silently accepted.
             loc = self.page.locator(target) if by == "css" else self.page.get_by_text(target, exact=True)
-            loc.wait_for(state="visible", timeout=timeout or self.timeout)
+            loc.wait_for(state="visible", timeout=min(timeout or self.timeout, self.remaining_ms()))
             self.resolve(target, by)
             self.guard()
             return True
@@ -203,23 +223,34 @@ class Browser:
 
     def extract(self, target, by="css"):
         self.guard(acting=True)
-        return self.resolve(target, by).inner_text(timeout=self.timeout).strip()
+        return self.resolve(target, by).inner_text(timeout=self.remaining_ms()).strip()
 
     def check(self, target, by="text"):
         self.guard()
         self.resolve(target, by)
         return True
 
+    def visible_dialogs(self):
+        loc = self.page.locator('dialog[open], [role="dialog"], [role="alertdialog"], [aria-modal="true"]')
+        return [loc.nth(i) for i in range(loc.count()) if loc.nth(i).is_visible()]
+
     def backend_state(self):
         self.guard()
         try:
             response = self.context.request.get(self.base_url + "/api/session",
-                                                timeout=self.timeout, max_redirects=0)
+                                                timeout=self.remaining_ms(), max_redirects=0)
             if response.status == 401:
                 raise RecoverableError("session_expired")
+            if response.status == 403:
+                raise HardFailure("permission_denied")
+            if response.status == 429 or response.status >= 500:
+                raise RecoverableError("verification_unavailable")
             if response.status != 200:
                 raise HardFailure("verification_failed")
-            return response.json()
+            try:
+                return response.json()
+            except (ValueError, TypeError):
+                raise HardFailure("verification_failed") from None
         except (RecoverableError, HardFailure):
             raise
         except Exception:

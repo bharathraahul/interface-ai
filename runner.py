@@ -24,6 +24,21 @@ class Parameters(BaseModel):
     password: str = Field(min_length=1, max_length=256, repr=False)
 
 
+class VerifiedAccount(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    id: str = Field(min_length=1, max_length=128, repr=False)
+    type: Literal["checking", "savings", "credit"]
+    balance: str = Field(pattern=r"^-?[0-9]+\.[0-9]{2}$", max_length=64, repr=False)
+    currency: str = Field(min_length=3, max_length=3)
+
+
+class VerifiedSession(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    username: str = Field(min_length=1, max_length=128, repr=False)
+    member_matches: int = Field(ge=1)
+    accounts: list[VerifiedAccount] = Field(max_length=64, repr=False)
+
+
 class Money(BaseModel):
     amount: Decimal
     currency: Literal["USD"] = "USD"
@@ -42,16 +57,21 @@ def parameters(values):
 def parse_money(value):
     if not isinstance(value, str):
         raise HardFailure("missing_output")
+    if len(value) > 64:
+        raise HardFailure("invalid_money")
     if not value.startswith("$"):
         raise HardFailure("unexpected_currency")
     # USD v1 grammar: optional sign after $, plain digits or US thousands groups.
-    if not re.fullmatch(r"\$-?(?:\d+|[1-9]\d{0,2}(?:,\d{3})+)\.\d{2}", value):
+    if not re.fullmatch(r"\$-?(?:[0-9]+|[1-9][0-9]{0,2}(?:,[0-9]{3})+)\.[0-9]{2}", value):
         raise HardFailure("invalid_money")
     return Money(amount=Decimal(value[1:].replace(",", "")))
 
 
 def identity(browser, inputs):
-    state = browser.backend_state()
+    try:
+        state = VerifiedSession.model_validate(browser.backend_state()).model_dump()
+    except ValidationError:
+        raise HardFailure("verification_failed") from None
     if state.get("username") != inputs.username:
         raise HardFailure("wrong_member")
     if state.get("member_matches") != 1:
@@ -69,6 +89,8 @@ def identity(browser, inputs):
 def verify_output(browser, inputs, raw):
     if browser._route() != "/account/savings":
         raise HardFailure("checkpoint_failed")
+    if browser.visible_dialogs():
+        raise RecoverableError("unknown_dialog")
     account = identity(browser, inputs)
     card = browser.resolve('[data-account-id="savings"]')
     if card.get_attribute("data-account-type") != "savings" or account.get("id") != "savings":
@@ -101,11 +123,14 @@ def artifact_from(actions, source):
 class Run:
     def __init__(self, inputs, base_url, headless, timeout, step_limit, deadline, handoff, policy):
         self.inputs = parameters(inputs)
-        if not (0 < timeout <= 30000 and 1 <= step_limit <= 64 and 0 < deadline <= 300):
+        if (type(timeout) is not int or type(step_limit) is not int
+                or type(deadline) not in {int, float}
+                or not (0 < timeout <= 30000 and 1 <= step_limit <= 64 and 0 < deadline <= 300)):
             raise HardFailure("invalid_inputs")
         self.browser = Browser(base_url, headless, timeout, policy)
         self.secrets = SecretStore({"secret:username": self.inputs.username, "secret:password": self.inputs.password})
         self.step_limit, self.deadline = step_limit, time.monotonic() + deadline
+        self.browser.deadline = self.deadline
         self.handoff = handoff
         self.evidence, self.actions = [], []
         self.repeats = {}
@@ -132,8 +157,9 @@ class Run:
             raise RecoverableError("unexpected_login")
         if route in {"/", "/account/savings"}:
             identity(b, self.inputs)
-        if b.page.locator('[role="dialog"]').count():
-            if b.page.locator('#notice').count() == 1:
+        dialogs = b.visible_dialogs()
+        if dialogs:
+            if len(dialogs) == 1 and dialogs[0].get_attribute("id") == "notice":
                 raise RecoverableError("human_required")
             raise RecoverableError("unknown_dialog")
         return b.observe()
@@ -154,7 +180,7 @@ class Run:
                     def validate():
                         if self.browser._route() != expected_route:
                             raise HardFailure("manual_navigation")
-                        if self.browser.page.locator('[role="dialog"]').count():
+                        if self.browser.visible_dialogs():
                             raise HardFailure("handoff_unresolved")
                         identity(self.browser, self.inputs)
                     self.handoffs += 1

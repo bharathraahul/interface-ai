@@ -4,6 +4,7 @@ import os
 from typing import Literal
 from pydantic import BaseModel, ConfigDict
 from outcomes import HardFailure, RecoverableError
+from privacy import model_payload
 
 class ModelAction(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
@@ -23,14 +24,23 @@ class Decider:
         import anthropic
         if not os.environ.get("ANTHROPIC_API_KEY") or not os.environ.get("ANTHROPIC_MODEL"):
             raise RecoverableError("model_unavailable")
+        # SDK debug logs can contain raw provider responses or credentials.
+        import logging
+        for name in ["anthropic", "httpx", "httpcore"]:
+            logger = logging.getLogger(name)
+            logger.handlers = [logging.NullHandler()]
+            logger.propagate = False
+        for name in list(logging.Logger.manager.loggerDict):
+            if name.startswith(("anthropic.", "httpx.", "httpcore.")):
+                logging.getLogger(name).disabled = True
         self.client = anthropic.Anthropic(timeout=timeout, max_retries=0)
         self.model = os.environ["ANTHROPIC_MODEL"]
         self.timeout = timeout
 
     def decide(self, observation, offered_actions, completed, timeout=None):
-        payload = {"goal": "Retrieve savings balance", "observation": observation,
-                   "offered_actions": offered_actions, "completed": completed,
-                   "input_references": ["secret:username", "secret:password"]}
+        payload = model_payload(observation, offered_actions, completed)
+        if timeout is not None and timeout <= 0:
+            raise HardFailure("deadline_exceeded")
         try:
             response = self.client.messages.create(
                 model=self.model, max_tokens=128, system=SYSTEM,
@@ -39,14 +49,17 @@ class Decider:
                         "input_schema": ModelAction.model_json_schema()}],
                 tool_choice={"type": "tool", "name": "next_action", "disable_parallel_tool_use": True},
                 timeout=min(timeout or self.timeout, self.timeout))
+        except Exception:
+            raise RecoverableError("model_unavailable") from None
+        try:
+            if response.stop_reason != "tool_use":
+                raise ValueError()
             calls = [block for block in response.content if block.type == "tool_use"]
             if len(calls) != 1 or calls[0].name != "next_action":
-                raise HardFailure("malformed_model_action")
-            return ModelAction.model_validate(calls[0].input).action
-        except HardFailure:
-            raise
-        except Exception as exc:
-            from pydantic import ValidationError
-            if isinstance(exc, ValidationError):
-                raise HardFailure("malformed_model_action") from None
-            raise RecoverableError("model_unavailable") from None
+                raise ValueError()
+            key = ModelAction.model_validate(calls[0].input).action
+            if key not in offered_actions:
+                raise ValueError()
+            return key
+        except Exception:
+            raise HardFailure("malformed_model_action") from None

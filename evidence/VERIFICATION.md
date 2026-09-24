@@ -1,10 +1,10 @@
 # Clean verification
 
-2026-09-13T17:01:49+00:00
+2026-09-24T02:57:45+00:00
 
 Local synthetic bank only; tests and commands ran in the invoking Python environment.
 
-Tests run: 19. Failures: 0. Errors: 0.
+Tests run: 43. Failures: 0. Errors: 0.
 
 - `python demo.py fixture`: PASS.
 - `python demo.py replay --member first`: PASS.

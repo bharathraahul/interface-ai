@@ -20,7 +20,7 @@ starts its own loopback server on a free port and stops it afterwards.
 ```sh
 python3 -m venv .venv
 . .venv/bin/activate
-python -m pip install -r requirements.txt
+python -m pip --require-virtualenv install -r requirements.txt
 python -m playwright install chromium
 python verify.py
 python audit.py
@@ -171,4 +171,6 @@ synthetic account data in `data.py` is documented test data, not production memb
 
 The network guard uses context-level routing, disables service workers and blocks
 WebSockets, following the [Playwright context routing API](https://playwright.dev/python/docs/api/class-browsercontext#browser-context-route).
+The expanded edge-case coverage and remaining live checks are listed in
+[evidence/EDGE_CASES.md](evidence/EDGE_CASES.md).
 See [REPORT.md](REPORT.md) for architecture, scope and remaining limitations.
